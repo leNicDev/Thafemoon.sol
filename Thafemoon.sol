@@ -446,6 +446,7 @@ contract Ownable is Context {
     function renounceOwnership() public virtual onlyOwner {
         emit OwnershipTransferred(_owner, address(0));
         _owner = address(0);
+        _previousOwner = address(0); // SSL-13 Prevent previous owner from unlocking the contract
     }
 
     /**
@@ -821,15 +822,6 @@ contract ThafeMoon is Context, IERC20, Ownable {
         return _tFeeTotal;
     }
 
-    function deliver(uint256 tAmount) public {
-        address sender = _msgSender();
-        require(!_isExcluded[sender], "Excluded addresses cannot call this function");
-        (uint256 rAmount,,,,,) = _getValues(tAmount);
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _rTotal = _rTotal.sub(rAmount);
-        _tFeeTotal = _tFeeTotal.add(tAmount);
-    }
-
     function reflectionFromToken(uint256 tAmount, bool deductTransferFee) public view returns(uint256) {
         require(tAmount <= _tTotal, "Amount must be less than supply");
         if (!deductTransferFee) {
@@ -1097,30 +1089,30 @@ contract ThafeMoon is Context, IERC20, Ownable {
             tokenAmount,
             0, // slippage is unavoidable
             0, // slippage is unavoidable
-            owner(),
+            address(this), // SSL-04
             block.timestamp
         );
     }
 
     //this method is responsible for taking all fee, if takeFee is true
     function _tokenTransfer(address sender, address recipient, uint256 amount,bool takeFee) private {
-        if(!takeFee)
+        if (!takeFee) {
             removeAllFee();
+        }
         
         if (_isExcluded[sender] && !_isExcluded[recipient]) {
             _transferFromExcluded(sender, recipient, amount);
         } else if (!_isExcluded[sender] && _isExcluded[recipient]) {
             _transferToExcluded(sender, recipient, amount);
-        } else if (!_isExcluded[sender] && !_isExcluded[recipient]) {
-            _transferStandard(sender, recipient, amount);
         } else if (_isExcluded[sender] && _isExcluded[recipient]) {
             _transferBothExcluded(sender, recipient, amount);
         } else {
             _transferStandard(sender, recipient, amount);
         }
         
-        if(!takeFee)
+        if (!takeFee) {
             restoreAllFee();
+        }
     }
 
     function _transferStandard(address sender, address recipient, uint256 tAmount) private {
